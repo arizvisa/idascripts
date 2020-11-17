@@ -694,13 +694,14 @@ class widget(object):
     """
     This namespace is for selecting a specific or particular widget.
     """
-    def __new__(self, (x, y)):
-        '''Return the widget at the specified `x` and `y` coordinate.'''
-        res = (x, y)
+    def __new__(self, xy):
+        '''Return the widget at the specified (`x`, `y`) coordinate within the `xy` tuple.'''
+        res = x, y = xy
         return cls.at(res)
     @classmethod
-    def at(cls, (x, y)):
-        '''Return the widget at the specified `x` and `y` coordinate.'''
+    def at(cls, xy):
+        '''Return the widget at the specified (`x`, `y`) coordinate within the `xy` tuple.'''
+        res = x, y = xy
         global application
         q = application()
         return q.widgetAt(x, y)
