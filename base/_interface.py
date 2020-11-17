@@ -97,10 +97,12 @@ class typemap:
 
         stringmap = {
             chr:(idaapi.strlit_flag(), idaapi.STRTYPE_C),
-            unichr:(idaapi.strlit_flag(), idaapi.STRTYPE_C_16),
             str:(idaapi.strlit_flag(), idaapi.STRTYPE_C),
-            unicode:(idaapi.strlit_flag(), idaapi.STRTYPE_C_16),
         }
+        if hasattr(builtins, 'unichr'):
+            stringmap.setdefault(builtins.unichr, (idaapi.strlit_flag(), idaapi.STRTYPE_C_16))
+        if hasattr(builtins, 'unicode'):
+            stringmap.setdefault(builtins.unicode, (idaapi.strlit_flag(), idaapi.STRTYPE_C_16))
 
         ptrmap = { sz : (idaapi.off_flag() | flg, tid) for sz, (flg, tid) in integermap.items() }
         nonemap = { None :(idaapi.align_flag(), -1) }
@@ -122,20 +124,26 @@ class typemap:
 
         stringmap = {
             chr:(idaapi.asciflag(), idaapi.ASCSTR_TERMCHR),
-            unichr:(idaapi.asciflag(), idaapi.ASCSTR_UNICODE),
             str:(idaapi.asciflag(), idaapi.ASCSTR_TERMCHR),
-            unicode:(idaapi.asciflag(), idaapi.ASCSTR_UNICODE),
         }
+
+        if hasattr(builtins, 'unichr'):
+            stringmap.setdefault(builtins.unichr, (idaapi.asciflag(), idaapi.ASCSTR_UNICODE))
+        if hasattr(builtins, 'unicode'):
+            stringmap.setdefault(builtins.unicode, (idaapi.asciflag(), idaapi.ASCSTR_UNICODE))
 
         ptrmap = { sz : (idaapi.offflag() | flg, tid) for sz, (flg, tid) in integermap.items() }
         nonemap = { None :(idaapi.alignflag(), -1) }
 
     # lookup table for type
     typemap = {
-        int:integermap, long:integermap, float:decimalmap,
-        str:stringmap, unicode:stringmap, chr:stringmap, unichr:stringmap,
+        int:integermap, float:decimalmap,
+        str:stringmap, chr:stringmap,
         type:ptrmap, None:nonemap,
     }
+    if hasattr(builtins, 'long'): typemap.setdefault(builtins.long, integermap)
+    if hasattr(builtins, 'unicode'): typemap.setdefault(builtins.unicode, stringmap)
+    if hasattr(builtins, 'unichr'): typemap.setdefault(builtins.unichr, stringmap)
 
     # inverted lookup table
     inverted = {}
@@ -210,7 +218,7 @@ class typemap:
         if isinstance(pythonType, ().__class__):
             (t, sz), count = pythonType, 1
             table = cls.typemap[t]
-            flag, typeid = table[abs(sz) if t in {int, long, float, type} else t]
+            flag, typeid = table[abs(sz) if t in {int, getattr(builtins, 'long', int), float, type} else t]
 
         # an array, which requires us to recurse...
         elif isinstance(pythonType, [].__class__):
