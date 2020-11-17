@@ -27,8 +27,8 @@ def map(F, **kwargs):
     `(address, **kwargs)` or a `(index, address, **kwargs)`. Any
     keyword arguments are passed to `F` unmodified.
     """
-    f1 = lambda (idx, ea), **kwargs: F(ea, **kwargs)
-    f2 = lambda (idx, ea), **kwargs: F(idx, ea, **kwargs)
+    f1 = lambda idx, ea, **kwargs: F(ea, **kwargs)
+    f2 = lambda idx, ea, **kwargs: F(idx, ea, **kwargs)
     f = f1 if F.func_code.co_argcount == 1 else f2
 
     result, all = [], database.functions()
@@ -39,7 +39,7 @@ def map(F, **kwargs):
             for i, ea in enumerate(all):
                 ui.navigation.set(ea)
                 six.print_("{:#x}: processing # {:d} of {:d} : {:s}".format(ea, 1 + i, total, func.name(ea)))
-                result.append( f((i, ea), **kwargs) )
+                result.append( f(i, ea, **kwargs) )
         except KeyboardInterrupt:
             six.print_("{:#x}: terminated at # {:d} of {:d} : {:s}".format(ea, 1 + i, total, func.name(ea)))
     return result
