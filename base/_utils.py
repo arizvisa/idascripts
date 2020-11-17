@@ -818,7 +818,11 @@ class wrap(object):
     CO_FUTURE_BARRY_AS_BDFL     = 0x40000
     CO_FUTURE_GENERATOR_STOP    = 0x80000
 
-    import opcode, compiler.consts as consts
+    import opcode
+    if sys.version_info.major < 3:
+        import compiler.consts as consts
+    else:
+        import inspect as consts
 
     @classmethod
     def co_assemble(cls, operation, operand=None):
