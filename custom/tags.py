@@ -246,9 +246,9 @@ class apply(object):
     before actually writing them back into the database.
     """
 
-    def __new__(cls, (Globals, Contents, Frames), **tagmap):
-        '''Apply the tags in the argument `(Globals, Contents, Frames)` back into the database.'''
-        res = Globals, Contents, Frames
+    def __new__(cls, Globals_Contents_Frames, **tagmap):
+        '''Apply the tags in the argument `(Globals, Contents, Frames)` from the `Globals_Contents_Frames` tuple back into the database.'''
+        res = Globals, Contents, Frames = Globals_Contents_Frames
         return cls.everything(res, **tagmap)
 
     ## applying the content to a function
@@ -374,9 +374,10 @@ class apply(object):
 
     ## apply everything to the entire database
     @classmethod
-    def everything(cls, (Globals, Contents, Frames), **tagmap):
-        '''Apply the tags in the argument `(Globals, Contents, Frames)` back into the database.'''
+    def everything(cls, Globals_Contents_Frames, **tagmap):
+        '''Apply the tags in the argument `(Globals, Contents, Frames)` from the `Globals_Contents_Frames` tuple back into the database.'''
         global apply
+        Globals, Contents, Frames = Globals_Contents_Frames
 
         ## convert a sorted list keyed by an address into something that updates ida's navigation pointer
         def update_navigation(xs, setter):
