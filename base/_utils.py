@@ -124,7 +124,169 @@ class PatternAnyType(Pattern):
     def __repr__(self):
         return "{:s}({:s})".format('Pattern', '|'.join(n.__name__ for n in self.type) if hasattr(self.type, '__iter__') else self.type.__name__)
 
+### compatibility namespace
+class pycompat(object):
+    class function_2x(object):
+        @classmethod
+        def new(cls, code, globals, name, argdefs, closure):
+            return types.FunctionType(code, globals, name, argdefs, closure)
+
+        @classmethod
+        def name(cls, object):
+            return object.func_name
+        @classmethod
+        def set_name(cls, object, name):
+            result, object.func_name = object.func_name, name
+            return result
+
+        @classmethod
+        def documentation(cls, object):
+            return object.func_doc
+        @classmethod
+        def set_documentation(cls, object, string):
+            result, object.func_doc = object.func_doc, string
+            return result
+
+        @classmethod
+        def defaults(cls, object):
+            return object.func_defaults
+        @classmethod
+        def globals(cls, object):
+            return object.func_globals
+        @classmethod
+        def closure(cls, object):
+            return object.func_closure
+        @classmethod
+        def code(cls, object):
+            return object.func_code
+
+    class function_3x(function_2x):
+        @classmethod
+        def name(cls, object):
+            return object.__name__
+        @classmethod
+        def set_name(cls, object, name):
+            result, object.__name__ = object.__name__, name
+            return result
+
+        @classmethod
+        def documentation(cls, object):
+            return object.__doc__
+        @classmethod
+        def set_documentation(cls, object, string):
+            result, object.__doc__ = object.__doc__, string
+            return result
+
+        @classmethod
+        def defaults(cls, object):
+            return object.__defaults__
+        @classmethod
+        def globals(cls, object):
+            return object.__globals__
+        @classmethod
+        def closure(cls, object):
+            return object.__closure__
+        @classmethod
+        def code(cls, object):
+            return object.__code__
+
+    function = function_2x if sys.version_info.major < 3 else function_3x
+
+    class code_2x(object):
+        @classmethod
+        def name(cls, object):
+            return object.co_name
+        @classmethod
+        def flags(cls, object):
+            return object.co_flags
+        @classmethod
+        def argcount(cls, object):
+            return object.co_argcount
+        @classmethod
+        def varnames(cls, object):
+            return object.co_varnames
+
+        cons = collections.namedtuple('code_t', ['co_argcount', 'co_nlocals', 'co_stacksize', 'co_flags', 'co_code', 'co_consts', 'co_names', 'co_varnames', 'co_filename', 'co_name', 'co_firstlineno', 'co_lnotab', 'co_freevars', 'co_cellvars'])
+        @classmethod
+        def unpack(cls, object):
+            return cls.cons(*(getattr(object, item) for item in cls.cons._fields))
+        @classmethod
+        def unpack_extra(cls, object):
+            return ()
+        @classmethod
+        def new(cls, attributes, extra=()):
+            argcount, nlocals, stacksize, flags, code, consts, names, varnames, filename, name, firstlineno, lnotab, freevars, cellvars = attributes
+            return types.CodeType(*attributes)
+
+    class code_3x(code_2x):
+        @classmethod
+        def unpack_extra(cls, object):
+            return object.co_posonlyargcount, object.co_kwonlyargcount
+        @classmethod
+        def new(cls, attributes, extra=(0, 0)):
+            argcount, nlocals, stacksize, flags, code, consts, names, varnames,filename, name, firstlineno, lnotab, freevars, cellvars = attributes
+            posonlyargcount, kwonlyargcount = extra
+            return types.CodeType(argcount, posonlyargcount, kwonlyargcount, nlocals, stacksize, flags, code, consts, names, varnames, filename, name, firstlineno, lnotab, freevars, cellvars)
+
+    code = code_2x if sys.version_info.major < 3 else code_3x
+
+    class method_2x(object):
+        @classmethod
+        def new(cls, function, instance, type):
+            return types.MethodType(function, instance, type)
+
+        @classmethod
+        def self(cls, object):
+            return object.im_self
+
+        @classmethod
+        def type(cls, object):
+            return object.im_class
+
+        @classmethod
+        def function(cls, object):
+            return object.im_func
+
+    class method_3x(object):
+        @classmethod
+        def new(cls, function, instance, type=None):
+            return types.MethodType(function, instance)
+
+        @classmethod
+        def self(cls, object):
+            return object.__self__
+
+        @classmethod
+        def type(cls, object):
+            return object.__self__.__class__
+
+        @classmethod
+        def function(cls, object):
+            return object.__func__
+
+    method = method_2x if sys.version_info.major < 3 else method_3x
+
 ### decorators
+class priority_tuple(object):
+    """
+    This class simulates a tuple because Python3's heapq implementation is
+    fucking stupid and ignores the priority that we use in the tuple for
+    sorting the values in the heapq.
+    """
+    def __init__(self, priority, items):
+        self.priority, self.items = priority, items
+
+    def __iter__(self):
+        yield self.priority
+        yield self.items
+
+    def __cmp__(self, other):
+        return cmp(self.priority, other.priority)
+    def __lt__(self, other):
+        return self.priority < other.priority
+    def __gt__(self, other):
+        return self.priority > other.priority
+
 class multicase(object):
     """
     A lot of magic is in this class which allows one to define multiple cases
@@ -162,8 +324,8 @@ class multicase(object):
             if len(other):
                 ok, prev = True, other[0]
             # ..otherwise we just figure it out by looking in the caller's locals
-            elif func.func_name in sys._getframe().f_back.f_locals:
-                ok, prev = True, sys._getframe().f_back.f_locals[func.func_name]
+            elif pycompat.function.name(func) in sys._getframe().f_back.f_locals:
+                ok, prev = True, sys._getframe().f_back.f_locals[pycompat.function.name(func)]
             # ..otherwise, first blood and we're not ok.
             else:
                 ok = False
@@ -195,10 +357,11 @@ class multicase(object):
                 continue
 
             # everything is ok...so should be safe to add it
-            heapq.heappush(cache, (priority, (func, t_args, argtuple)))
+            heapq.heappush(cache, priority_tuple(priority, (func, t_args, argtuple)))
+            #heapq.heappush(cache, (priority, (func, t_args, argtuple)))
 
             # now we can update the docs
-            res.__doc__ = cls.document(func.__name__, [n for _, n in cache])
+            res.__doc__ = cls.document(func.__name__, [item for _, item in cache])
 
             # ..and then restore the wrapper to its former glory
             return cons(res)
@@ -221,7 +384,7 @@ class multicase(object):
         # throw an exception if we were given an unexpected number of arguments
         if len(other) > 1:
             error_keywords = ("{:s}={!s}".format(n, t.__name__ if isinstance(t, builtins.type) or t in {callable} else '|'.join(t_.__name__ for t_ in t) if hasattr(t, '__iter__') else "{!r}".format(t)) for n, t in t_args.items())
-            raise internal.exceptions.InvalidParameterError(u"@{:s}({:s}) : More than one callable ({:s}) was specified to add a case to. Refusing to add cases to more than one callable.".format('.'.join([__name__, cls.__name__]), ', '.join(error_keywords), ', '.join("\"{:s}\"".format(string.escape(c.co_name if isinstance(c, types.CodeType) else c.__name__, '"')) for c in other)))
+            raise internal.exceptions.InvalidParameterError(u"@{:s}({:s}) : More than one callable ({:s}) was specified to add a case to. Refusing to add cases to more than one callable.".format('.'.join([__name__, cls.__name__]), ', '.join(error_keywords), ', '.join("\"{:s}\"".format(string.escape(pycompat.code.name(c) if isinstance(c, types.CodeType) else c.__name__, '"')) for c in other)))
         return result
 
     @classmethod
@@ -271,7 +434,7 @@ class multicase(object):
             return
 
         # Log any multicased functions that define type constraints for parameters which don't exist.
-        co = func.func_code
+        co = pycompat.function.code(func)
         co_fullname, co_filename, co_lineno = '.'.join([func.__module__, func.__name__]), os.path.relpath(co.co_filename, idaapi.get_user_idadir()), co.co_firstlineno
         unavailable = {param for param in parameters.keys()} - {item for item in args}
         if unavailable:
@@ -282,7 +445,7 @@ class multicase(object):
         # Return the prototype for the current function with the provided parameter constraints.
         argsiter = ("{:s}={:s}".format(item, parameter) if parameter else item for item, parameter in Fargsiter(args, parameters))
         res = (argsiter, ("*{:s}".format(star),) if star else (), ("**{:s}".format(starstar),) if starstar else ())
-        return "{:s}({:s})".format(func.func_name, ', '.join(itertools.chain(*res)))
+        return "{:s}({:s})".format(pycompat.function.name(func), ', '.join(itertools.chain(*res)))
 
     @classmethod
     def match(cls, args_kwds, heap):
@@ -340,14 +503,16 @@ class multicase(object):
             #return f(*(arguments + tuple(w)), **keywords)
 
         # swap out the original code object with our wrapper's
-        f, c = F, F.func_code
+        f, c = F, pycompat.function.code(F)
         cargs = c.co_argcount, c.co_nlocals, c.co_stacksize, c.co_flags, \
                 c.co_code, c.co_consts, c.co_names, c.co_varnames, \
-                c.co_filename, '.'.join([func.__module__, func.func_name]), \
+                c.co_filename, '.'.join([func.__module__, pycompat.function.name(func)]), \
                 c.co_firstlineno, c.co_lnotab, c.co_freevars, c.co_cellvars
-        newcode = types.CodeType(*cargs)
-        res = types.FunctionType(newcode, f.func_globals, f.func_name, f.func_defaults, f.func_closure)
-        res.func_name, res.func_doc = func.func_name, func.func_doc
+        newcode = pycompat.code.new(cargs, pycompat.code.unpack_extra(c))
+
+        res = pycompat.function.new(newcode, pycompat.function.globals(f), pycompat.function.name(f), pycompat.function.defaults(f), pycompat.function.closure(f))
+        pycompat.function.set_name(res, pycompat.function.name(func)),
+        pycompat.function.set_documentation(res, pycompat.function.documentation(func))
 
         # assign the specified cache to it
         setattr(res, cls.cache_name, cache)
@@ -361,39 +526,39 @@ class multicase(object):
         if isinstance(object, types.FunctionType):
             return object
         elif isinstance(object, types.MethodType):
-            return object.im_func
+            return pycompat.method.function(object)
         elif isinstance(object, types.CodeType):
-            res, = (n for n in gc.get_referrers(c) if n.func_name == c.co_name and isinstance(n, types.FunctionType))
+            res, = (item for item in gc.get_referrers(c) if pycompat.function.name(item) == pycompat.code.name(c) and isinstance(item, types.FunctionType))
             return res
         elif isinstance(object, (staticmethod, classmethod)):
             return object.__func__
         raise internal.exceptions.InvalidTypeOrValueError(object)
 
     @classmethod
-    def reconstructor(cls, n):
+    def reconstructor(cls, item):
         '''Return a closure that returns the original callable type for a function.'''
-        if isinstance(n, types.FunctionType):
+        if isinstance(item, types.FunctionType):
             return lambda f: f
-        if isinstance(n, types.MethodType):
-            return lambda f: types.MethodType(f, n.im_self, n.im_class)
-        if isinstance(n, (staticmethod, classmethod)):
-            return lambda f: type(n)(f)
-        if isinstance(n, types.InstanceType):
-            return lambda f: types.InstanceType(type(n), dict(f.__dict__))
-        if isinstance(n, (builtins.type, types.ClassType)):
-            return lambda f: type(n)(n.__name__, n.__bases__, dict(f.__dict__))
-        raise internal.exceptions.InvalidTypeOrValueError(type(n))
+        if isinstance(item, types.MethodType):
+            return lambda f: pycompat.method.new(f, pycompat.method.self(item), pycompat.method.type(item))
+        if isinstance(item, (staticmethod, classmethod)):
+            return lambda f: type(item)(f)
+        if isinstance(item, types.InstanceType):
+            return lambda f: types.InstanceType(type(item), dict(f.__dict__))
+        if isinstance(item, (builtins.type, types.ClassType)):
+            return lambda f: type(item)(item.__name__, item.__bases__, dict(f.__dict__))
+        raise internal.exceptions.InvalidTypeOrValueError(type(item))
 
     @classmethod
     def ex_args(cls, f):
         '''Extract the arguments from a function.'''
-        c = f.func_code
-        varnames_count, varnames_iter = c.co_argcount, (item for item in c.co_varnames)
+        c = pycompat.function.code(f)
+        varnames_count, varnames_iter = pycompat.code.argcount(c), (item for item in pycompat.code.varnames(c))
         args = tuple(itertools.islice(varnames_iter, varnames_count))
-        res = { a : v for v, a in zip(reversed(f.func_defaults or []), reversed(args)) }
-        try: starargs = next(varnames_iter) if c.co_flags & cls.CO_VARARGS else ""
+        res = { a : v for v, a in zip(reversed(pycompat.function.defaults(f) or []), reversed(args)) }
+        try: starargs = next(varnames_iter) if pycompat.code.flags(c) & cls.CO_VARARGS else ""
         except StopIteration: starargs = ""
-        try: kwdargs = next(varnames_iter) if c.co_flags & cls.CO_VARKEYWORDS else ""
+        try: kwdargs = next(varnames_iter) if pycompat.code.flags(c) & cls.CO_VARKEYWORDS else ""
         except StopIteration: kwdargs = ""
         return args, res, (starargs, kwdargs)
 
@@ -401,16 +566,17 @@ class multicase(object):
     def generatorQ(cls, func):
         '''Returns true if `func` is a generator.'''
         func = cls.ex_function(func)
-        return bool(func.func_code.co_flags & CO_VARGEN)
+        code = pycompat.function.code(func)
+        return bool(pycompat.code.flags(code) & CO_VARGEN)
 
 class alias(object):
     def __new__(cls, other, klass=None):
         cons, func = multicase.reconstructor(other), multicase.ex_function(other)
         if isinstance(other, types.MethodType) or klass:
-            module = (func.__module__, klass or other.im_self.__name__)
+            module = (func.__module__, klass or pycompat.method.type(other).__name__)
         else:
             module = (func.__module__,)
-        document = "Alias for `{:s}`.".format('.'.join(module + (func.func_name,)))
+        document = "Alias for `{:s}`.".format('.'.join(module + (pycompat.function.name(func),)))
         res = cls.new_wrapper(func, document)
         return cons(res)
 
@@ -566,7 +732,7 @@ class character(object):
                 result.send(ch)
 
             # check if character is printable (unicode)
-            elif isinstance(ch, unicode) and cls.unicodeQ(ch):
+            elif sys.version_info.major < 3 and isinstance(ch, unicode) and cls.unicodeQ(ch):
                 result.send(ch)
 
             # check if character is printable (ascii)
@@ -637,7 +803,7 @@ class character(object):
                         raise internal.exceptions.InvalidFormatError(u"{:s}.unescape({!s}) : Expected the next two characters ('{:s}', '{:s}') to be hex digits for an ascii character.".format('.'.join([__name__, cls.__name__]), result, string.escape(hb, '\''), string.escape(lb, '\'')))
 
                     # convert the two hex digits into their integral forms
-                    h, l = map(cls.of_hex, (hb.lower(), lb.lower()))
+                    h, l = (cls.of_hex(item) for item in [hb.lower(), lb.lower()])
 
                     # coerce the digits into an ascii character and send the character to our result
                     result.send(six.unichr(
@@ -652,7 +818,7 @@ class character(object):
                         raise internal.exceptions.InvalidFormatError(u"{:s}.unescape({!s}) : Expected the next four characters ('{:s}', '{:s}', '{:s}', '{:s}') to be hex digits for a unicode character.".format('.'.join([__name__, cls.__name__]), result, string.escape(hwb, '\''), string.escape(lwb, '\''), string.escape(hb, '\''), string.escape(lb, '\'')))
 
                     # convert the four hex digits into their integral forms
-                    hw, lw, h, l = map(cls.of_hex, (hwb.lower(), lwb.lower(), hb.lower(), lb.lower()))
+                    hw, lw, h, l = (cls.of_hex(item) for item in [hwb.lower(), lwb.lower(), hb.lower(), lb.lower()])
 
                     # coerce the digits into a unicode character and send the character to our result
                     result.send(six.unichr(
@@ -671,7 +837,7 @@ class character(object):
                         raise internal.exceptions.InvalidFormatError(u"{:s}.unescape({!s}) : Expected the next six characters ('{:s}', '{:s}', '{:s}', '{:s}', '{:s}', '{:s}') to be hex digits for a long-unicode character.".format('.'.join([__name__, cls.__name__]), result, string.escape(Hwb, '\''), string.escape(Lwb, '\''), string.escape(hwb, '\''), string.escape(lwb, '\''), string.escape(hb, '\''), string.escape(lb, '\'')))
 
                     # convert the six hex digits into their integral forms
-                    Hw, Lw, hw, lw, h, l = map(cls.of_hex, (Hwb.lower(), Lwb.lower(), hwb.lower(), lwb.lower(), hb.lower(), lb.lower()))
+                    Hw, Lw, hw, lw, h, l = (cls.of_hex(item) for item in [Hwb.lower(), Lwb.lower(), hwb.lower(), lwb.lower(), hb.lower(), lb.lower()])
 
                     # coerce the digits into a unicode character and send the character to our result
                     result.send(six.unichr(
@@ -702,14 +868,27 @@ class string(object):
     """
 
     @classmethod
-    def of(cls, string):
+    def of_2x(cls, string):
         '''Return a string from IDA in a format that is consistent'''
         return None if string is None else string.decode('utf8') if isinstance(string, str) else string
 
     @classmethod
-    def to(cls, string):
+    def to_2x(cls, string):
         '''Convert a string into a form that IDA will accept.'''
         return None if string is None else string.encode('utf8') if isinstance(string, unicode) else string
+
+    # In Python3, IDA seems to handle the native string-type properly so we can
+    # just convert the desired parameter to a string and pass it through the API.
+
+    @classmethod
+    def passthrough(cls, string):
+        '''Handle all strings both from IDA and to IDA transparently.'''
+        if not isinstance(string, (six.string_types, bytes, None.__class__)):
+            raise TypeError(string)
+        return None if string is None else string.decode('utf8') if isinstance(string, bytes) else string
+
+    of = of_2x if sys.version_info.major < 3 else passthrough
+    to = to_2x if sys.version_info.major < 3 else passthrough
 
     # dictionary for mapping control characters to their correct forms
     mapping = {
@@ -749,7 +928,7 @@ class string(object):
             continue
 
         # figure out the correct function that determines how to join the res
-        fjoin = (unicode() if isinstance(string, unicode) else str()).join
+        fjoin = (unicode() if sys.version_info.major < 3 and isinstance(string, unicode) else str()).join
 
         return fjoin(res.get())
 
@@ -829,7 +1008,7 @@ class wrap(object):
         '''Assembles the specified `operation` and `operand` into a code string.'''
         opcode = cls.opcode.opmap[operation]
         if operand is None:
-            return six.int2byte(opcode)
+            return bytes(bytearray([opcode]))
 
         # if operand was defined, then encode it
         op1 = (operand & 0x00ff) // 0x0001
@@ -839,17 +1018,17 @@ class wrap(object):
     @classmethod
     def co_varargsQ(cls, co):
         '''Returns whether the provided code type, `co`, takes variable arguments.'''
-        return bool(co.co_flags & cls.consts.CO_VARARGS)
+        return bool(pycompat.code.flags(co) & cls.consts.CO_VARARGS)
 
     @classmethod
     def co_varkeywordsQ(cls, co):
         '''Returns whether the provided code type, `co`, takes variable keyword arguments.'''
-        return bool(co.co_flags & cls.consts.CO_VARKEYWORDS)
+        return bool(pycompat.code.flags(co) & cls.consts.CO_VARKEYWORDS)
 
     @classmethod
     def cell(cls, *args):
         '''Convert `args` into a ``cell`` tuple.'''
-        return tuple(((lambda item: lambda : item)(arg).func_closure[0]) for arg in args)
+        return tuple((pycompat.function.closure((lambda item: lambda : item)(arg))[0]) for arg in args)
 
     @classmethod
     def assemble(cls, function, wrapper, bound=False):
@@ -857,8 +1036,8 @@ class wrap(object):
 
         If `bound` is ``True``, then assume that the first parameter for `F` represents the instance it's bound to.
         """
-        F, C, S = map(cls.extract, (function, wrapper, cls.assemble))
-        Fc, Cc, Sc = map(operator.attrgetter('func_code'), (F, C, S))
+        F, C, S = (cls.extract(item) for item in [function, wrapper, cls.assemble])
+        Fc, Cc, Sc = (pycompat.function.code(item) for item in [F, C, S])
 
         ## build the namespaces that we'll use
         Tc = cls.co_varargsQ(Fc), cls.co_varkeywordsQ(Fc)
@@ -868,8 +1047,9 @@ class wrap(object):
         Svals = (f if callable(f) else fo for f, fo in [(function, F), (wrapper, C)])
 
         # rip out the arguments from our target `F`
-        Fargs = Fc.co_varnames[:Fc.co_argcount]
-        Fwildargs = Fc.co_varnames[Fc.co_argcount : Fc.co_argcount + sum(Tc)]
+        varnames, argcount = pycompat.code.varnames(Fc), pycompat.code.argcount(Fc)
+        Fargs = varnames[:argcount]
+        Fwildargs = varnames[argcount : argcount + sum(Tc)]
 
         # combine them into tuples for looking up variables
         co_names, co_varnames = Sargs[:], Fargs[:] + Fwildargs[:]
@@ -878,16 +1058,16 @@ class wrap(object):
         co_freevars = Sargs[:2]
 
         # constants for code type (which consist of just the self-doc)
-        co_consts = (F.func_doc,)
+        co_consts = (pycompat.function.documentation(F),)
 
         ## figure out some things for assembling the bytecode
 
         # first we'll grab the call instruction type to use
         call_ = {
             (False, False) : 'CALL_FUNCTION',
-            (True, False)  : 'CALL_FUNCTION_VAR',
+            (True, False)  : 'CALL_FUNCTION_VAR' if 'CALL_FUNCTION_VAR' in cls.opcode.opmap else 'CALL_FUNCTION_KW',
             (False, True)  : 'CALL_FUNCTION_KW',
-            (True, True)   : 'CALL_FUNCTION_VAR_KW',
+            (True, True)   : 'CALL_FUNCTION_VAR_KW' if 'CALL_FUNCTION_VAR_KW' in cls.opcode.opmap else 'CALL_FUNCTION_EX',
         }
         call = call_[Tc]
 
@@ -933,17 +1113,20 @@ class wrap(object):
         co_code = bytes().join(code_)
 
         ## next we'll construct the code type based on what we have
-        cargs = len(Fargs), len(co_names) + len(co_varnames) + len(co_freevars), \
-                co_stacksize, co_flags, co_code, \
-                co_consts, co_names, co_varnames, \
-                Fc.co_filename, Fc.co_name, Fc.co_firstlineno, \
-                bytes(), co_freevars
+        cargs = pycompat.code.cons( \
+                    len(Fargs), len(co_names) + len(co_varnames) + len(co_freevars), \
+                    co_stacksize, co_flags, co_code, \
+                    co_consts, co_names, co_varnames, \
+                    Fc.co_filename, Fc.co_name, Fc.co_firstlineno, \
+                    bytes(), co_freevars, ()
+                )
 
-        func_code = types.CodeType(*cargs)
+        func_code = pycompat.code.new(cargs)
 
         ## and then turn it back into a function
-        res = types.FunctionType(func_code, F.func_globals, F.func_name, F.func_defaults, cls.cell(*Svals))
-        res.func_name, res.func_doc = F.func_name, F.func_doc
+        res = pycompat.function.new(func_code, pycompat.function.globals(F), pycompat.function.name(F), pycompat.function.defaults(F), cls.cell(*Svals))
+        pycompat.function.set_name(res, pycompat.function.name(F)),
+        pycompat.function.set_documentation(res, pycompat.function.documentation(F))
 
         return res
 
@@ -968,11 +1151,11 @@ class wrap(object):
 
         # if it's a method, then extract the function from its propery
         elif isinstance(object, types.MethodType):
-            return object.im_func
+            return pycompat.method.function(object)
 
         # if it's a code type, then walk through all of its referrers finding one that matches it
         elif isinstance(object, types.CodeType):
-            res, = (n for n in gc.get_referrers(c) if n.func_name == c.co_name and isinstance(n, types.FunctionType))
+            res, = (item for item in gc.get_referrers(c) if pycompat.function.name(item) == pycompat.code.name(c) and isinstance(item, types.FunctionType))
             return res
 
         # if it's a property decorator, then they hide the function in an attribute
@@ -985,12 +1168,12 @@ class wrap(object):
     @classmethod
     def arguments(cls, f):
         '''Extract the arguments from a function `f`.'''
-        c = f.func_code
-        count, iterable = c.co_argcount, (item for item in c.co_varnames)
+        c = pycompat.function.code(f)
+        count, iterable = pycompat.code.argcount(c), (item for item in pycompat.code.varnames(c))
         args = tuple(itertools.islice(iterable, count))
-        res = { a : v for v, a in zip(reversed(f.func_defaults or []), reversed(args)) }
-        starargs = next(iterable, '') if c.co_flags & cls.CO_VARARGS else ''
-        kwdargs = next(iterable, '') if c.co_flags & cls.CO_VARKEYWORDS else ''
+        res = { a : v for v, a in zip(reversed(pycompat.function.defaults(f) or []), reversed(args)) }
+        starargs = next(iterable, '') if pycompat.code.flags(c) & cls.CO_VARARGS else ''
+        kwdargs = next(iterable, '') if pycompat.code.flags(c) & cls.CO_VARKEYWORDS else ''
         return args, res, (starargs, kwdargs)
 
     @classmethod
@@ -1003,7 +1186,7 @@ class wrap(object):
 
         # if it's a method type, then we just need to extract the related properties to construct it
         elif isinstance(callable, types.MethodType):
-            return lambda method, self=callable.im_self, cls=callable.im_class: types.MethodType(method, self, cls)
+            return lambda method, self=pycompat.method.self(callable), cls=pycompat.method.type(callable): pycompat.method.new(method, self, cls)
 
         # if it's a property decorator, we just need to pass the function as an argument to the decorator
         elif isinstance(callable, (staticmethod, classmethod)):
