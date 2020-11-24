@@ -1427,7 +1427,7 @@ class members_t(object):
         '''Display all the fields within the specified structure.'''
         res = []
         mn, ms, mti = 0, 0, 0
-        for i in six.moves.range(len(self)):
+        for i in range(len(self)):
             m = self[i]
             name, t, ti, ofs, size, comment, tag = m.name, m.type, m.typeinfo, m.offset, m.size, m.comment, m.tag()
             res.append((i, name, t, ti, ofs, size, comment or '', tag))
