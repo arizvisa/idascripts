@@ -29,7 +29,9 @@ def map(F, **kwargs):
     """
     f1 = lambda idx, ea, **kwargs: F(ea, **kwargs)
     f2 = lambda idx, ea, **kwargs: F(idx, ea, **kwargs)
-    f = f1 if F.func_code.co_argcount == 1 else f2
+    Ff = internal.utils.pycompat.method.function(F) if isinstance(F, types.MethodType) else F
+    Fc = internal.utils.pycompat.function.code(Ff)
+    f = f1 if internal.utils.pycompat.code.argcount(Fc) == 1 else f2
 
     result, all = [], database.functions()
     total = len(all)
