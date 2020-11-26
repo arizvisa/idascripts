@@ -59,7 +59,7 @@ that is prefixed with a backslash.
 
 import functools, operator, itertools, types
 import collections, heapq, string
-import six, logging
+import sys, six, logging
 
 import internal, idaapi
 import codecs
@@ -227,88 +227,148 @@ class _float(default):
     def encode(cls, instance):
         return "float({:f})".format(instance)
 
-@cache.register(str)
-class _str(default):
-    """
-    This encoder/decoder actually supports both ``unicode`` and regular
-    ``str`` due to the ``type`` method checking both string types. Also,
-    we use this class as a superclass for ``_unicode`` so that any kind
-    of string will be encoded into a unicode string which will be
-    converted into UTF8 when written into IDA.
-    """
+if sys.version_info.major < 3:
+    @cache.register(str)
+    class _str(default):
+        """
+        This encoder/decoder actually supports both ``unicode`` and regular
+        ``str`` due to the ``type`` method checking both string types. Also,
+        we use this class as a superclass for ``_unicode`` so that any kind
+        of string will be encoded into a unicode string which will be
+        converted into UTF8 when written into IDA.
+        """
 
-    @classmethod
-    def type(cls, instance):
-        return isinstance(instance, six.string_types)
+        @classmethod
+        def type(cls, instance):
+            return isinstance(instance, six.string_types)
 
-    @classmethod
-    def _unescape(cls, iterable):
-        '''Invert the utils.character.unescape coroutine into a generator.'''
-        state = internal.interface.collect_t(list, lambda agg, ch: agg + [ch])
-        unescape = internal.utils.character.unescape(state); next(unescape)
+        @classmethod
+        def _unescape(cls, iterable):
+            '''Invert the utils.character.unescape coroutine into a generator.'''
+            state = internal.interface.collect_t(list, lambda agg, ch: agg + [ch])
+            unescape = internal.utils.character.unescape(state); next(unescape)
 
-        # iterate through each character in the string
-        for ch in iterable:
-            unescape.send(ch)
+            # iterate through each character in the string
+            for ch in iterable:
+                unescape.send(ch)
 
-            # iterate through the results and yield them to the caller
-            for ch in state.get():
-                yield ch
+                # iterate through the results and yield them to the caller
+                for ch in state.get():
+                    yield ch
 
-            # now we can start over
-            state.reset()
-        return
+                # now we can start over
+                state.reset()
+            return
 
-    @classmethod
-    def _escape(cls, iterable):
-        '''Invert the utils.character.escape coroutine into a generator.'''
-        state = internal.interface.collect_t(list, lambda agg, ch: agg + [ch])
-        escape = internal.utils.character.escape(state); next(escape)
+        @classmethod
+        def _escape(cls, iterable):
+            '''Invert the utils.character.escape coroutine into a generator.'''
+            state = internal.interface.collect_t(list, lambda agg, ch: agg + [ch])
+            escape = internal.utils.character.escape(state); next(escape)
 
-        # iterate through each character in the string
-        for ch in iterable:
-            escape.send(ch)
+            # iterate through each character in the string
+            for ch in iterable:
+                escape.send(ch)
 
-            # iterate through the results and yield them to the caller
-            for ch in state.get():
-                yield ch
+                # iterate through the results and yield them to the caller
+                for ch in state.get():
+                    yield ch
 
-            # empty our state and start over
-            state.reset()
-        return
+                # empty our state and start over
+                state.reset()
+            return
 
-    @classmethod
-    def decode(cls, data):
-        res = data if isinstance(data, unicode) else data.decode('utf8')
-        iterable = (ch for ch in res.lstrip())
-        return unicode().join(cls._unescape(iterable))
+        @classmethod
+        def decode(cls, data):
+            res = data if isinstance(data, unicode) else data.decode('utf8')
+            iterable = (ch for ch in res.lstrip())
+            return unicode().join(cls._unescape(iterable))
 
-    @classmethod
-    def encode(cls, instance):
-        iterable = (item for item in instance)
-        res = cls._escape(iterable)
-        return unicode().join(res)
+        @classmethod
+        def encode(cls, instance):
+            iterable = (item for item in instance)
+            res = cls._escape(iterable)
+            return unicode().join(res)
 
-@cache.register(unicode, pattern.star(' \t'), 'u', "'\"")
-class _unicode(_str):
-    """
-    This encoder/decoder really just a wrapper around the ``_str``
-    class. Its encoder will simply escape the string in the exact
-    same way as ``_str``. We register a pattern for it so that we
-    can decode unicode strings encoded in their older format. Due
-    to the older format requiring unicode strings to begin with
-    the "u'" prefix, we can simply eval it in order to decode
-    back to a unicode string.
-    """
+    @cache.register(unicode, pattern.star(' \t'), 'u', "'\"")
+    class _unicode(_str):
+        """
+        This encoder/decoder really just a wrapper around the ``_str``
+        class. Its encoder will simply escape the string in the exact
+        same way as ``_str``. We register a pattern for it so that we
+        can decode unicode strings encoded in their older format. Due
+        to the older format requiring unicode strings to begin with
+        the "u'" prefix, we can simply eval it in order to decode
+        back to a unicode string.
+        """
 
-    @classmethod
-    def type(cls, instance):
-        return isinstance(instance, unicode)
+        @classmethod
+        def type(cls, instance):
+            return isinstance(instance, unicode)
 
-    @classmethod
-    def decode(cls, data):
-        logging.warning(u"{:s}.decode({!s}) : Decoding a unicode string that was encoded using the old format.".format('.'.join([__name__, cls.__name__]), internal.utils.string.repr(data)))
-        return eval(data)
+        @classmethod
+        def decode(cls, data):
+            logging.warning(u"{:s}.decode({!s}) : Decoding a unicode string that was encoded using the old format.".format('.'.join([__name__, cls.__name__]), internal.utils.string.repr(data)))
+            return eval(data)
+
+else:
+    @cache.register(bytes)
+    class _bytes(default):
+        @classmethod
+        def type(cls, instance):
+            return isinstance(instance, bytes)
+
+    @cache.register(str)
+    class _str(default):
+        @classmethod
+        def type(cls, instance):
+            return isinstance(instance, six.string_types)
+
+        @classmethod
+        def _unescape(cls, iterable):
+            '''Invert the utils.character.unescape coroutine into a generator.'''
+            state = internal.interface.collect_t(list, lambda agg, ch: agg + [ch])
+            unescape = internal.utils.character.unescape(state); next(unescape)
+
+            # iterate through each character in the string
+            for ch in iterable:
+                unescape.send(ch)
+
+                # iterate through the results and yield them to the caller
+                for ch in state.get():
+                    yield ch
+
+                # now we can start over
+                state.reset()
+            return
+
+        @classmethod
+        def _escape(cls, iterable):
+            '''Invert the utils.character.escape coroutine into a generator.'''
+            state = internal.interface.collect_t(list, lambda agg, ch: agg + [ch])
+            escape = internal.utils.character.escape(state); next(escape)
+
+            # iterate through each character in the string
+            for ch in iterable:
+                escape.send(ch)
+
+                # iterate through the results and yield them to the caller
+                for ch in state.get():
+                    yield ch
+
+                # empty our state and start over
+                state.reset()
+            return
+
+        @classmethod
+        def decode(cls, data):
+            res = data if isinstance(data, unicode) else data.decode('utf8')
+            return str().join(cls._unescape(iter(res.lstrip())))
+
+        @classmethod
+        def encode(cls, instance):
+            res = cls._escape(iter(instance))
+            return str().join(res)
 
 @cache.register(dict, pattern.star(' \t'), '{')
 class _dict(default):
