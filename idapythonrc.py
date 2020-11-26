@@ -136,13 +136,16 @@ class internal_submodule(internal_api):
         module.__doc__ = '\n'.join("{:s} -- {:s}".format(name, path) for name, path in sorted(cache.items()))
 
         # Load each module composing the api, and attach it to the returned submodule.
-        for name, path in cache.items():
+        stack = [item for item in cache.items()]
+        while stack:
+            name, path = stack.pop(0)
             try:
                 res = self.new_api(name, path)
                 modulename = '.'.join([res.__package__, name])
 
             except Exception:
-                __import__('logging').warning("{:s} : Unable to import module {:s} from {!s}".format(self.__name__, name, path), exc_info=True)
+                __import__('logging').info("{:s} : Error trying to import module {:s} from {!s}. Queuing it until later.".format(self.__name__, name, path), exc_info=True)
+                stack.append((name, path))
 
             else:
                 setattr(module, name, res)
