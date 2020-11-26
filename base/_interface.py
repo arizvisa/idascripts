@@ -333,7 +333,7 @@ class prioritybase(object):
 
         # add the callable to our priority queue
         res = self.__cache__[target]
-        heapq.heappush(self.__cache__[target], (priority, callable))
+        heapq.heappush(self.__cache__[target], internal.utils.priority_tuple(priority, callable))
 
         # preserve a backtrace so we can track where our callable is at
         self.__traceback[(target, callable)] = traceback.extract_stack()[:-1]
@@ -363,7 +363,7 @@ class prioritybase(object):
         # If we aggregated some items, then replace our cache with everything
         # except for the item the user discarded.
         if state:
-            self.__cache__[target][:] = state
+            self.__cache__[target][:] = [internal.utils.priority_tuple(*item) for item in state]
 
         # Otherwise we found nothing and we can remove the entire target
         # from our cache.
@@ -531,7 +531,7 @@ class priorityhook(prioritybase):
 
         # unhook, assign our new method, and then re-hook
         with self.__context__():
-            method = types.MethodType(closure, self.object, self.__type__)
+            method = internal.utils.pycompat.method.new(closure, self.object, self.__type__)
             setattr(self.object, name, method)
         return True
 
@@ -543,7 +543,7 @@ class priorityhook(prioritybase):
         if not hasattr(self.object, name):
             cls, method = self.__class__, '.'.join([self.object.__class__.__name__, name])
             raise NameError("{:s}.disconnect({!r}, {!s}) : Unable to disconnect from the specified hook ({:s}).".format('.'.join([__name__, cls.__name__]), name, callable, method))
-        method = types.MethodType(closure, self.object, self.__type__)
+        method = internal.utils.pycompat.method.new(closure, self.object, self.__type__)
         setattr(self.object, name, method)
         return True
 
