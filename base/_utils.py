@@ -636,29 +636,29 @@ class character(object):
         ''' Constants '''
         import string as _string, unicodedata as _unicodedata
 
-        backslash = '\\'
+        backslash = u'\\'
 
         # character mappings to escaped versions
         mappings = {
-            '\a' : r'\a',
-            '\b' : r'\b',
-            '\t' : r'\t',
-            '\n' : r'\n',
-            '\v' : r'\v',
-            '\f' : r'\f',
-            '\r' : r'\r',
-            '\0' : r'\0',
-            '\1' : r'\1',
-            '\2' : r'\2',
-            '\3' : r'\3',
-            '\4' : r'\4',
-            '\5' : r'\5',
-            '\6' : r'\6',
-            # '\7' : r'\7',     # this is the same as '\a'
+            u'\a' : u'\\a',
+            u'\b' : u'\\b',
+            u'\t' : u'\\t',
+            u'\n' : u'\\n',
+            u'\v' : u'\\v',
+            u'\f' : u'\\f',
+            u'\r' : u'\\r',
+            u'\0' : u'\\0',
+            u'\1' : u'\\1',
+            u'\2' : u'\\2',
+            u'\3' : u'\\3',
+            u'\4' : u'\\4',
+            u'\5' : u'\\5',
+            u'\6' : u'\\6',
+            #u'\7' : u'\\7',     # this is the same as '\a'
         }
 
         # inverse mappings of characters plus the '\7 -> '\a' byte
-        inverse = { v : k for k, v in itertools.chain([('\7', r'\7')], mappings.items()) }
+        inverse = { v : k for k, v in itertools.chain([(u'\7', u'\\7')], mappings.items()) }
 
         # whitespace characters as a set
         whitespace = { ch for ch in _string.whitespace }
@@ -732,8 +732,12 @@ class character(object):
                 result.send(cls.const.backslash)
                 result.send(ch)
 
-            # check if character is printable (unicode)
+            # check if character is printable (py2 and unicode)
             elif sys.version_info.major < 3 and isinstance(ch, unicode) and cls.unicodeQ(ch):
+                result.send(ch)
+
+            # check if character is printable (py3 and unicode)
+            elif 2 < sys.version_info.major and isinstance(ch, str) and cls.unicodeQ(ch):
                 result.send(ch)
 
             # check if character is printable (ascii)
@@ -743,14 +747,14 @@ class character(object):
             # check if character is a single-byte ascii
             elif n < 0x100:
                 result.send(cls.const.backslash)
-                result.send('x')
+                result.send(u'x')
                 result.send(cls.to_hex((n & 0xf0) // 0x10))
                 result.send(cls.to_hex((n & 0x0f) // 0x01))
 
             # check that character is an unprintable unicode character
             elif n < 0x10000:
                 result.send(cls.const.backslash)
-                result.send('u')
+                result.send(u'u')
                 result.send(cls.to_hex((n & 0xf000) // 0x1000))
                 result.send(cls.to_hex((n & 0x0f00) // 0x0100))
                 result.send(cls.to_hex((n & 0x00f0) // 0x0010))
@@ -759,7 +763,7 @@ class character(object):
             # maybe the character is an unprintable long-unicode character
             elif n < 0x110000:
                 result.send(cls.const.backslash)
-                result.send('U')
+                result.send(u'U')
                 result.send(cls.to_hex((n & 0x00000000) // 0x10000000))
                 result.send(cls.to_hex((n & 0x00000000) // 0x01000000))
                 result.send(cls.to_hex((n & 0x00100000) // 0x00100000))
@@ -798,7 +802,7 @@ class character(object):
                     result.send(cls.const.backslash)
 
                 # check if the 'x' prefix is specified, which represents a hex digit
-                elif t == 'x':
+                elif t == u'x':
                     hb, lb = (yield), (yield)
                     if any(not cls.hexQ(b) for b in {hb, lb}):
                         raise internal.exceptions.InvalidFormatError(u"{:s}.unescape({!s}) : Expected the next two characters ('{:s}', '{:s}') to be hex digits for an ascii character.".format('.'.join([__name__, cls.__name__]), result, string.escape(hb, '\''), string.escape(lb, '\'')))
@@ -813,7 +817,7 @@ class character(object):
                     0))
 
                 # if we find a 'u' prefix, then we have a unicode character
-                elif t == 'u':
+                elif t == u'u':
                     hwb, lwb, hb, lb = (yield), (yield), (yield), (yield)
                     if any(not cls.hexQ(b) for b in {hwb, lwb, hb, lb}):
                         raise internal.exceptions.InvalidFormatError(u"{:s}.unescape({!s}) : Expected the next four characters ('{:s}', '{:s}', '{:s}', '{:s}') to be hex digits for a unicode character.".format('.'.join([__name__, cls.__name__]), result, string.escape(hwb, '\''), string.escape(lwb, '\''), string.escape(hb, '\''), string.escape(lb, '\'')))
@@ -830,7 +834,7 @@ class character(object):
                     0))
 
                 # if we find a 'U' prefix, then we have a long unicode character
-                elif t == 'U':
+                elif t == u'U':
                     hzb, lzb, Hwb, Lwb, hwb, lwb, hb, lb = (yield), (yield), (yield), (yield), (yield), (yield), (yield), (yield)
                     if any(not cls.hexQ(b) or cls.of_hex(b) for b in (hzb, lzb)):
                         raise internal.exceptions.InvalidFormatError(u"{:s}.unescape({!s}) : Expected the next two characters ('{:s}', '{:s}') to be zero for a long-unicode character.".format('.'.join([__name__, cls.__name__]), result, string.escape(hzb, '\''), string.escape(lzb, '\'')))
@@ -893,8 +897,8 @@ class string(object):
 
     # dictionary for mapping control characters to their correct forms
     mapping = {
-        '\n' : r'\n',
-         ' ' : r' ',
+        u'\n' : u'\\n',
+        u' ' : u' ',
     }
 
     @classmethod
@@ -912,11 +916,11 @@ class string(object):
         transform = character.escape(res); next(transform)
 
         # iterate through each character, sending everything to res
-        for ch in (string or ''):
+        for ch in (string or u''):
 
             # check if character is a user-specified quote or a backslash
-            if any(operator.contains(set, ch) for set in (quote, '\\')):
-                res.send('\\')
+            if any(operator.contains(set, ch) for set in {quote, u'\\'}):
+                res.send(u'\\')
                 res.send(ch)
 
             # check if character has an escape mapping to use
@@ -929,9 +933,8 @@ class string(object):
             continue
 
         # figure out the correct function that determines how to join the res
-        fjoin = (unicode() if sys.version_info.major < 3 and isinstance(string, unicode) else str()).join
-
-        return fjoin(res.get())
+        cons = unicode() if sys.version_info.major < 3 and isinstance(string, unicode) else str()
+        return cons.join(res.get())
 
     @classmethod
     def repr(cls, item):
@@ -940,24 +943,36 @@ class string(object):
         All unicode strings are encoded to UTF-8 in order to guarantee
         the resulting string can be emitted.
         """
-        if isinstance(item, six.string_types):
+
+        # Python2 string types (str/bytes and unicode)
+        if isinstance(item, six.string_types) and sys.version_info.major < 3:
             res = cls.escape(item, '\'')
             if all(ord(ch) < 0x100 for ch in item):
                 return "'{:s}'".format(res)
             return u"u'{:s}'".format(res)
+
+        # Python3 string types (bytes and str)
+        elif isinstance(item, (six.string_types, bytes)):
+            res = cls.escape(item, '\'')
+            return u"b'{:s}'".format(res) if isinstance(item, bytes) else u"'{:s}'".format(res)
+
         elif isinstance(item, tuple):
             res = map(cls.repr, item)
-            return "({:s}{:s})".format(', '.join(res), ',' if len(item) == 1 else '')
+            return u"({:s}{:s})".format(', '.join(res), ',' if len(item) == 1 else '')
+
         elif isinstance(item, list):
             res = map(cls.repr, item)
-            return "[{:s}]".format(', '.join(res))
+            return u"[{:s}]".format(', '.join(res))
+
         elif isinstance(item, set):
             res = map(cls.repr, item)
-            return "set([{:s}])".format(', '.join(res))
+            return u"set([{:s}])".format(', '.join(res))
+
         elif isinstance(item, dict):
             res = ("{:s}: {:s}".format(cls.repr(k), cls.repr(v)) for k, v in item.items())
-            return "{{{:s}}}".format(', '.join(res))
-        return repr(item)
+            return u"{{{:s}}}".format(', '.join(res))
+
+        return u"{!r}".format(item)
 
     @classmethod
     def kwargs(cls, kwds):
