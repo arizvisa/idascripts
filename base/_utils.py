@@ -703,9 +703,10 @@ class character(object):
     @classmethod
     def to_hex(cls, integer):
         '''Given an integer, return the hex digit that it represents.'''
-        if integer >= 0 and integer < 0x10:
-            return six.unichr(integer + 0x30) if integer < 10 else six.unichr(integer + 0x57)
-        raise ValueError
+        inverse = { digit : char for char, digit in cls.const.hexadecimal.items() }
+        if integer in inverse:
+            return operator.getitem(inverse, integer)
+        raise ValueError(integer)
 
     @classmethod
     def of_hex(cls, digit):
