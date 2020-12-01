@@ -974,14 +974,40 @@ class string(object):
 
         return u"{!r}".format(item)
 
-    @classmethod
-    def kwargs(cls, kwds):
-        '''Format a dictionary (from kwargs) so that it can be emitted to a user as part of a message.'''
-        res = []
-        for key, value in kwds.items():
-            k, v = cls.escape(key), cls.repr(value)
-            res.append("{:s}={!s}".format(*(item.encode('utf8') if isinstance(item, unicode) else item for item in (k, v))))
-        return ', '.join(res).decode('utf8')
+    # On Python2, utf-8 strings are not rendered to a string properly. This
+    # screws up the output when trying to write to the console because IDA
+    # will then try to utf-8 decode the string manually. To work around this,
+    # the following implementation escapes the keys manually, and then utf-8
+    # encodes them when concatenating them together. After we have nicely
+    # formatted our entire dict, then we re-encode it back to utf-8 for printing.
+    if sys.version_info.major < 3:
+        @classmethod
+        def kwargs(cls, kwds):
+            '''Format a dictionary (from kwargs) so that it can be emitted to a user as part of a message.'''
+            res = []
+            for key, value in kwds.items():
+                k, v = cls.escape(key), cls.repr(value)
+                res.append("{:s}={!s}".format(*(item.encode('utf8') if isinstance(item, unicode) else item for item in (k, v))))
+            return ', '.join(res).decode('utf8')
+
+    # In Python3, IDA doesn't seem to do any utf-8 trickery. So, all we need to
+    # do is to escape each key and render it to the string. Then when it gets
+    # printed, it should be using the correct characters.
+    else:
+        @classmethod
+        def kwargs(cls, kwds):
+            '''Format a dictionary (from kwargs) so that it can be emitted to a user as part of a message.'''
+            res = []
+
+            # Escape each key, and repr() each value so that we can emit the keyword
+            # parameters for a function call using the same syntax that the user
+            # would likely type it.
+            for key, value in kwds.items():
+                # XXX: we could probably force `key` to a string here, but kwargs should
+                #      _never_ have a non-string passed as a parameter name. therefore
+                #      we graciously accept any exception that gets raised here.
+                res.append("{:s}={!s}".format(cls.escape(key), cls.repr(value)))
+            return ', '.join(res)
 
     @classmethod
     def decorate_arguments(cls, *names):
