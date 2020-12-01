@@ -99,7 +99,7 @@ class internal_path(internal_api):
         '''Iterate through all of the modules that we can handle, and then load it if we've been asked.'''
         self.cache = { name : path for name, path in self.iterate_api(**self.attrs) }
         if fullname not in self.cache:
-            raise ImportError("Path-loader ({:s}) was unable to find a module named {:s}".format(self.path, fullname))
+            raise ImportError("path-loader ({:s}) was not able to find a module named `{:s}`".format(self.path, fullname))
         return self.new_api(fullname, self.cache[fullname])
 
 class internal_submodule(internal_api):
@@ -135,21 +135,50 @@ class internal_submodule(internal_api):
         cache = { name : path for name, path in self.iterate_api(**self.attrs) }
         module.__doc__ = '\n'.join("{:s} -- {:s}".format(name, path) for name, path in sorted(cache.items()))
 
-        # Load each module composing the api, and attach it to the returned submodule.
-        stack = [item for item in cache.items()]
-        while stack:
+        # Load each submodule that composes the api, and attach it to the returned submodule.
+        stack, count, result = [item for item in cache.items()], len(cache), {}
+        while stack and count > 0:
             name, path = stack.pop(0)
+
+            # Take the submodule name we popped off of the cache, and try and load it.
+            # If we were able to load it successfully, then we just need to attach the
+            # loaded code as a submodule of the object we're going to return.
             try:
                 res = self.new_api(name, path)
                 modulename = '.'.join([res.__package__, name])
 
-            except Exception:
-                __import__('logging').info("{:s} : Error trying to import module {:s} from {!s}. Queuing it until later.".format(self.__name__, name, path), exc_info=True)
+            # If an exception was raised, then remember it so that we can let the user
+            # know after we've completely loaded the module.
+            except Exception as E:
+                __import__('logging').info("{:s} : Error trying to import module `{:s}` from {!s}. Queuing it until later.".format(self.__name__, name, path), exc_info=True)
+
+                # If we caught an exception while trying to import the module, then stash
+                # our exception info state into a dictionary and decrease a counter. This
+                # is strictly to deal with module recursion issues in Python3.
+                result[name], count = sys.exc_info(), count - 1
                 stack.append((name, path))
 
+            # Add the submodule that we loaded into the module that we're going to return.
             else:
                 setattr(module, name, res)
             continue
+
+        # If we weren't able to load one of the submodules that should've been in our cache,
+        # then go through all of our backtraces and log the exception that was raised.
+        if stack:
+            import logging, traceback
+            for name, path in stack:
+                logging.fatal("{:s} : Error trying to import module `{:s}` from {!s}.".format(self.__name__, name, path), exc_info=result[name])
+            return module
+
+        # If we caught an exception despite our stack being empty, then this is because of a
+        # recursion issue. In case someone wants to track these situations down, we go through
+        # our caught exceptions and create some logging events with the backtrace. These errors
+        # are non-fatal because importing another sub-module helped resolve it.
+        for name, exc_info in result.items():
+            __import__('logging').info("{!s} : Encountered a non-fatal exception while trying to import recursive module `{:s}` from {!s}".format(self.__name__, name, cache[name]), exc_info=result[name])
+
+        # Return the module that we just created.
         return module
 
 class internal_object(object):
@@ -168,7 +197,7 @@ class internal_object(object):
     def load_module(self, fullname):
         '''Return the specific object for the module specified by `fullname`.'''
         if fullname != self.__name__:
-            raise ImportError("Loader {:s} was not able to find a module named {:s}".format(self.__name__, fullname))
+            raise ImportError("object-loader ({:s}) was not able to find a module named `{:s}`".format(self.__name__, fullname))
         module = self.sys.modules[fullname] = self.object
         return module
 
@@ -254,7 +283,7 @@ try:
             path = os.getenv('USERPROFILE')
             exec(open(os.path.join(path, filename)).read())
         else:
-            raise OSError('Unable to determine the user\'s home directory.')
+            raise OSError("unable to determine the user's home directory.")
         pass
 
 except IOError:
