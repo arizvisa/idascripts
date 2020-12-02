@@ -1,4 +1,4 @@
-import builtins as E
+import sys, builtins as E
 
 class UnicodeException(E.BaseException):
     """
@@ -13,22 +13,53 @@ class UnicodeException(E.BaseException):
         self.__args__ = args
         self.__message__ = args[0] if len(args) == 1 else ''
 
-    # tp_str
-    def __str__(self):
-        length = len(self.args)
-        if length == 0:
-            return ""
-        elif length == 1:
-            item = self.args[0]
-            return str(item.encode('utf8') if isinstance(item, unicode) else item)
-        return str(self.args)
+    # Python2 can be emitted in more than one way which requires us
+    # to implement both the Exception.__str__ and Exception.__unicode__
+    # methods. If returning a regular string (bytes), then we need to
+    # utf-8 encode the result because IDA's console will automatically
+    # decode it.
+    if sys.version_info.major < 3:
+
+        # tp_str
+        def __str__(self):
+            length = len(self.args)
+            if length == 0:
+                return ""
+            elif length == 1:
+                item = self.args[0]
+                return str(item.encode('utf8') if isinstance(item, unicode) else item)
+            return str(self.args)
+
+        def __unicode__(self):
+            # return unicode(self.__str__())
+            length = len(self.args)
+            if length == 0:
+                return u""
+            elif length == 1:
+                return unicode(self.args[0])
+            return unicode(self.args)
+
+    # Python3 really only requires us to implement this method when
+    # emitting an exception. This is the same as a unicode type, so
+    # we should be okay with casting the exception's arguments.
+    else:
+
+        # tp_str
+        def __str__(self):
+            length = len(self.args)
+            if length == 0:
+                return ""
+            elif length == 1:
+                item = self.args[0]
+                return str(item)
+            return str(self.args)
 
     # tp_repr
     def __repr__(self):
         repr_suffix = repr(self.args)
         name = type(self).__name__
         dot = name.rfind('.')
-        shortname = name[dot+1:] if dot > -1 else name
+        shortname = name[1 + dot:] if dot > -1 else name
         return shortname + repr_suffix
 
     # tp_as_sequence
@@ -64,14 +95,6 @@ class UnicodeException(E.BaseException):
         return self.args
     def __setstate__(self, pack):
         self.args = pack
-    def __unicode__(self):
-        # return unicode(self.__str__())
-        length = len(self.args)
-        if length == 0:
-            return u""
-        elif length == 1:
-            return unicode(self.args[0])
-        return unicode(self.args)
 
 class MissingTagError(UnicodeException, E.KeyError):
     """
