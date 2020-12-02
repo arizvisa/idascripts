@@ -1045,17 +1045,34 @@ class wrap(object):
     else:
         import inspect as consts
 
-    @classmethod
-    def co_assemble(cls, operation, operand=None):
-        '''Assembles the specified `operation` and `operand` into a code string.'''
-        opcode = cls.opcode.opmap[operation]
-        if operand is None:
-            return bytes(bytearray([opcode]))
+    # Assembler for Python2 bytecode, where each opcode is either a single-byte or a tri-byte.
+    if sys.version_info.major < 3:
+        @classmethod
+        def co_assemble(cls, operation, operand=None):
+            '''Assembles the specified `operation` and `operand` into a code string.'''
+            opcode = cls.opcode.opmap[operation]
+            if operand is None:
+                return bytes(bytearray([opcode]))
 
-        # if operand was defined, then encode it
-        op1 = (operand & 0x00ff) // 0x0001
-        op2 = (operand & 0xff00) // 0x0100
-        return bytes(bytearray([opcode, op1, op2]))
+            # if operand was defined, then encode it
+            op1 = (operand & 0x00ff) // 0x0001
+            op2 = (operand & 0xff00) // 0x0100
+            return bytes(bytearray([opcode, op1, op2]))
+
+    # Assembler for Python3 bytecode where each opcode is a uint16_t.
+    else:
+        @classmethod
+        def co_assemble(cls, operation, operand=None):
+            '''Assembles the specified `operation` and `operand` into a code string.'''
+            opcode, ext = cls.opcode.opmap[operation], cls.opcode.EXTENDED_ARG
+            if (operand or 0) < 0x00000100:
+                return bytes(bytearray([opcode, operand or 0]))
+
+            msb = math.trunc(math.ceil(math.log(operand, 2)))
+            operands = [ 0xff & operand // 2 ** shift for shift in range(0, min(32, msb), 8) ]
+
+            iterable = itertools.chain(([ext, item] for item in operands[:-1]), ([opcode, item] for item in operands[-1:]))
+            return bytes(bytearray(itertools.chain(*iterable)))
 
     @classmethod
     def co_varargsQ(cls, co):
