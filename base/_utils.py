@@ -663,8 +663,8 @@ class character(object):
         # whitespace characters as a set
         whitespace = { ch for ch in _string.whitespace }
 
-        # printable characters as a set
-        printable = { ch for ch in _string.printable } - whitespace
+        # printable characters as a set (spaces are the only whitespace that we consider as printable)
+        printable = { ch for ch in _string.printable } - whitespace | {u' '}
 
         # hexadecimal digits as a lookup
         hexadecimal = { ch : i for i, ch in enumerate(_string.hexdigits[:0x10]) }
@@ -741,7 +741,7 @@ class character(object):
                 result.send(ch)
 
             # check if character is printable (ascii)
-            elif isinstance(ch, str) and cls.asciiQ(ch):
+            elif isinstance(ch, six.string_types) and cls.asciiQ(ch):
                 result.send(ch)
 
             # check if character is a single-byte ascii
