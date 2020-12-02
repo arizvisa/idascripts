@@ -1273,16 +1273,28 @@ def transform(translate, *names):
         # convert any positional arguments
         res = ()
         for value, argname in zip(rargs, argnames):
-            res += (translate(value) if argname in names else value),
+            try:
+                res += (translate(value) if argname in names else value),
+            except Exception as E:
+                cls = E.__class__
+                raise cls("{!s}: Exception raised while transforming parameter `{:s}` with value {!r}".format('.'.join([f.__module__, f.__name__]), argname, value))
 
         # get the rest
         for value in rargs[len(res):]:
-            res += (translate(value) if wildname in names else value,)
+            try:
+                res += (translate(value) if wildname in names else value,)
+            except Exception as E:
+                cls = E.__class__
+                raise cls("{!s}: Exception raised while transforming parameters `{:s}` with value {!r}".format('.'.join([f.__module__, f.__name__]), wildname, value))
 
         # convert any keywords arguments
         kwds = {k : v for k, v in rkwds.items()}
         for argname in {item for item in rkwds.keys()} & names:
-            kwds[argname] = translate(kwds[argname])
+            try:
+                kwds[argname] = translate(kwds[argname])
+            except Exception as E:
+                cls = E.__class__
+                raise cls("{!s}: Exception raised while transforming parameter `{:s}` with value {!r}".format('.'.join([f.__module__, f.__name__]), argname, kwds[argname]))
         return F(*res, **kwds)
 
     # decorater that wraps the function `F` with `wrapper`.
