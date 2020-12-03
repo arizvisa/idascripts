@@ -900,7 +900,7 @@ class string(object):
     }
 
     @classmethod
-    def escape(cls, string, quote=''):
+    def escape(cls, string, quote=u''):
         """Escape the characters in `string` specified by `quote`.
 
         Handles both unicode and ascii. Defaults to escaping only
@@ -944,15 +944,19 @@ class string(object):
 
         # Python2 string types (str/bytes and unicode)
         if isinstance(item, six.string_types) and sys.version_info.major < 3:
-            res = cls.escape(item, '\'')
+            res = cls.escape(item.decode('latin1') if isinstance(item, bytes) else item, u'\'')
             if all(ord(ch) < 0x100 for ch in item):
-                return "'{:s}'".format(res)
+                return u"'{:s}'".format(res)
             return u"u'{:s}'".format(res)
 
-        # Python3 string types (bytes and str)
-        elif isinstance(item, (six.string_types, bytes)):
-            res = cls.escape(item, '\'')
-            return u"b'{:s}'".format(res) if isinstance(item, bytes) else u"'{:s}'".format(res)
+        # Python3 string types (str and bytes)
+        elif isinstance(item, six.string_types):
+            res = cls.escape(item, u'\'')
+            return u"'{:s}'".format(res)
+
+        elif isinstance(item, bytes):
+            res = cls.escape(item.decode('latin1'), u'\'')
+            return u"b'{:s}'".format(res)
 
         elif isinstance(item, tuple):
             res = map(cls.repr, item)
