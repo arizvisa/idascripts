@@ -312,11 +312,19 @@ if sys.version_info.major < 3:
             return eval(data)
 
 else:
-    @cache.register(bytes)
+    @cache.register(bytes, pattern.star(' \t'), 'b', "'\"")
     class _bytes(default):
         @classmethod
         def type(cls, instance):
             return isinstance(instance, bytes)
+
+        @classmethod
+        def decode(cls, data):
+            return eval(data)
+
+        @classmethod
+        def encode(cls, instance):
+            return repr(instance)
 
     @cache.register(str)
     class _str(default):
@@ -362,7 +370,7 @@ else:
 
         @classmethod
         def decode(cls, data):
-            res = data if isinstance(data, unicode) else data.decode('utf8')
+            res = data if isinstance(data, six.string_types) else data.decode('utf8')
             return str().join(cls._unescape(iter(res.lstrip())))
 
         @classmethod
@@ -465,7 +473,7 @@ class tag(object):
             '''Given an `iterable`, decode it into a unicode string and send it to `result`.'''
 
             # first create our aggregate type for decoding into
-            agg = internal.interface.collect_t(unicode, operator.add)
+            agg = internal.interface.collect_t(unicode if sys.version_info.major < 3 else str, operator.add)
 
             # construct a transformer that unescapes characters to result
             unescape = internal.utils.character.unescape(agg); next(unescape)
@@ -532,7 +540,8 @@ class tag(object):
             # if we were just whitespace, then decode it as
             # a unicode string to return
             if ch == '\n':
-                value_s = unicode().join(res)
+                cons = unicode if sys.version_info.major < 3 else str
+                value_s = cons().join(res)
                 result.send(_str.decode(value_s))
                 return
 
@@ -546,6 +555,7 @@ class tag(object):
             # now we'll try to find out what type to decode it as
             try:
                 t = cache.match(value_s)
+
             except KeyError:
                 t = _str
 
@@ -565,7 +575,7 @@ class tag(object):
     @classmethod
     def encode(cls, key, value):
         '''Encode the provided `key` and `value` into a line fit for a comment.'''
-        result = internal.interface.collect_t(unicode, operator.add)
+        result = internal.interface.collect_t(unicode if sys.version_info.major < 3 else str, operator.add)
 
         # first encode the beginning of the name
         tag.name.encode(iter(key), result)
