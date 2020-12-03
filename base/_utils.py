@@ -888,7 +888,7 @@ class string(object):
     @classmethod
     def passthrough(cls, string):
         '''Handle all strings both from IDA and to IDA transparently.'''
-        return None if string is None else string.decode('utf8') if isinstance(string, bytes) else string
+        return None if string is None else string
 
     of = of_2x if sys.version_info.major < 3 else passthrough
     to = to_2x if sys.version_info.major < 3 else passthrough
