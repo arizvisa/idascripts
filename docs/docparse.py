@@ -6,7 +6,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import six
+import six, builtins
 import functools, operator, itertools, types
 import argparse, logging
 import ast, contextlib
@@ -42,8 +42,7 @@ class evaluate(object):
         return res
 
     ## Miscellaneous internal types
-    import six, types
-    from six.moves import builtins
+    import six, types, builtins
 
     class structure:
         structure_t = 'structure_t'
@@ -62,23 +61,23 @@ class stringify(object):
         None: 'None',
         int: 'int',
         long: 'long',
-        list: 'list',
-        str: 'str',
-        basestring: 'basestring',
+        list: 'list', builtins.list: 'list',
+        str: 'str', basestring: 'str',
         unicode: 'unicode',
         chr: 'chr',
         callable: 'callable',
         tuple: 'tuple',
         set: 'set',
-        types.NoneType: 'None',
+        None.__class__: 'None',
     }
     stringmap = {
         'types.NoneType' : 'None',
+        'None.__class__' : 'None',
         'types.TupleType' : 'tuple',
         'basestring': 'str',
     }
     def __new__(cls, object):
-        if isinstance(object, basestring):
+        if isinstance(object, six.string_types):
             try:
                 res = cls.stringmap[object] if object in cls.stringmap else evaluate(object)
             except AttributeError:
@@ -101,17 +100,17 @@ class Reference(object):
             raise TypeError(object)
         self.__children__.append(object)
     def get(self, name, *default):
-        if not isinstance(name, basestring):
+        if not isinstance(name, six.string_types):
             raise TypeError(name)
         return getattr(self, "_{:s}".format(name), *default) if default else getattr(self, "_{:s}".format(name))
     def set(self, **attrs):
         for name, _ in attrs.iteritems():
-            if not isinstance(name, basestring):
+            if not isinstance(name, six.string_types):
                 raise TypeError(name)
             continue
         [setattr(self, "_{:s}".format(key), value) for key, value in attrs.iteritems()]
     def has(self, name):
-        if not isinstance(name, basestring):
+        if not isinstance(name, six.string_types):
             raise TypeError(name)
         return hasattr(self, "_{:s}".format(name))
     name = property(fget=operator.attrgetter('_name'))
@@ -213,8 +212,8 @@ class grammar(object):
         l, r = (n[0] for n in map(grammar.reduce, (l, r)))
         if isinstance(l, tuple): l = reduce(operation, l)
         if isinstance(r, tuple): r = reduce(operation, r)
-        if isinstance(l, basestring): l = evaluate(l)
-        if isinstance(r, basestring): r = evaluate(r)
+        if isinstance(l, six.string_types): l = evaluate(l)
+        if isinstance(r, six.string_types): r = evaluate(r)
         return operation(l, r),
 
     def reduce_dictionary(dict):
@@ -370,7 +369,7 @@ class restructure(object):
         return map(cls.escape, strings)
     @classmethod
     def indent(cls, string, prefix):
-        res = string.split('\n') if isinstance(string, basestring) else string
+        res = string.split('\n') if isinstance(string, six.string_types) else string
         return '\n'.join(cls.indentlist(res, prefix))
     @classmethod
     def indentlist(cls, strings, prefix):
@@ -737,7 +736,7 @@ class restructure(object):
                 res.append((n, ("{!s}" if df < 0x100 else "{:#x}").format(df)))
             elif isinstance(df, float):
                 res.append((n, "{!s}".format(df)))
-            elif isinstance(df, basestring):
+            elif isinstance(df, six.string_types):
                 res.append((n, df))
             else:
                 raise TypeError('args', n, df)
@@ -754,7 +753,7 @@ class restructure(object):
 
             # convert any suspected resolvable types to a string
             ty = stringify(evaluate(ty))
-            if isinstance(ty, basestring):
+            if isinstance(ty, six.string_types):
                 res.append((n, descr, ty))
             elif isinstance(ty, types.TupleType):
                 t = tuple(ty)
@@ -830,7 +829,8 @@ class restructure(object):
         for n, descr, ty in params[:] if ref.name == '__new__' else params[1:]:
             res.append(":param {name:s}:".format(name=cls.escape(n)) if isinstance(descr, undefined) else ":param {name:s}: {description:s}".format(name=cls.escape(n), description=cls.paramDescriptionToRst(descr.strip())))
             if not isinstance(ty, undefined):
-                res.append(":type {name:s}: {types:s}".format(name=cls.escape(n), types=' or '.join(map(cls.escape, ty)) if isinstance(ty, tuple) else cls.escape(ty)))
+                types = ' or '.join(cls.escape(item) for item in itertools.chain(*(items if isinstance(items, tuple) else [items] for items in ty))) if isinstance(ty, tuple) else cls.escape(ty)
+                res.append(":type {name:s}: {types:s}".format(name=cls.escape(n), types=types))
             continue
 
         if params[1:]: res.append('')
@@ -864,7 +864,8 @@ class restructure(object):
         for n, descr, ty in params:
             res.append(":param {name:s}:".format(name=cls.escape(n)) if isinstance(descr, undefined) else ":param {name:s}: {description:s}".format(name=cls.escape(n), description=cls.paramDescriptionToRst(descr.strip())))
             if not isinstance(ty, undefined):
-                res.append(":type {name:s}: {types:s}".format(name=cls.escape(n), types=' or '.join(map(cls.escape, ty)) if isinstance(ty, tuple) else cls.escape(ty)))
+                types = ' or '.join(cls.escape(item) for item in itertools.chain(*(items if isinstance(items, tuple) else [items] for items in ty))) if isinstance(ty, tuple) else cls.escape(ty)
+                res.append(":type {name:s}: {types:s}".format(name=cls.escape(n), types=types))
             continue
 
         if params: res.append('')
