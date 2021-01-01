@@ -1196,12 +1196,12 @@ class wrap(object):
     # Python3 implementation of the assemble function which will take a callable, pass it as the first
     # parameter to some kind of wrapper (callable) whilst preserving any arguments/names that were called.
     @classmethod
-    def assemble_3x(cls, function, wrapper, bound=False):
+    def assemble_38x(cls, function, wrapper, bound=False):
         """Assemble a ``types.CodeType`` that will execute `wrapper` with `F` as its first parameter.
 
         If `bound` is ``True``, then assume that the first parameter for `F` represents the instance it's bound to.
         """
-        F, C, S = (cls.extract(item) for item in [function, wrapper, cls.assemble_3x])
+        F, C, S = (cls.extract(item) for item in [function, wrapper, cls.assemble_38x])
         Fc, Cc, Sc = (pycompat.function.code(item) for item in [F, C, S])
         Nvarargs, Nvarkwds = 1 if cls.co_varargsQ(Fc) else 0, 1 if cls.co_varkeywordsQ(Fc) else 0
 
@@ -1296,10 +1296,112 @@ class wrap(object):
 
         return res
 
+    @classmethod
+    def assemble_39x(cls, function, wrapper, bound=False):
+        """Assemble a ``types.CodeType`` that will execute `wrapper` with `F` as its first parameter.
+
+        If `bound` is ``True``, then assume that the first parameter for `F` represents the instance it's bound to.
+        """
+        F, C, S = (cls.extract(item) for item in [function, wrapper, cls.assemble_39x])
+        Fc, Cc, Sc = (pycompat.function.code(item) for item in [F, C, S])
+        Nvarargs, Nvarkwds = 1 if cls.co_varargsQ(Fc) else 0, 1 if cls.co_varkeywordsQ(Fc) else 0
+
+        ### build the namespaces that we'll use.
+
+        # first we'll build the externals that get passed to the wrapper.
+        Sargs = ('F', 'wrapper')
+        Svals = (f if callable(f) else fo for f, fo in [(function, F), (wrapper, C)])
+
+        # rip out the arguments from our target `F`.
+        varnames, argcount = pycompat.code.varnames(Fc), pycompat.code.argcount(Fc)
+        Fargs, Fdefaults = varnames[:argcount], pycompat.function.defaults(F)
+        Fvarargs, Fvarkwds = varnames[argcount : argcount + Nvarargs], varnames[argcount + Nvarargs : argcount + Nvarargs + Nvarkwds]
+
+        # combine them into tuples for looking up variables.
+        co_names, co_varnames = Sargs[:], Fargs[:] + Fvarargs[:] + Fvarkwds[:]
+
+        ## free variables (that get passed to `C`).
+        co_freevars = Sargs[:2]
+
+        ## constants for code type (which consist of just the self-doc).
+        co_consts = (pycompat.function.documentation(F),)
+
+        ## flags for the code type.
+        co_flags = cls.CO_NESTED | cls.CO_OPTIMIZED | cls.CO_NEWLOCALS
+        co_flags |= cls.CO_VARARGS if Nvarargs > 0 else 0
+        co_flags |= cls.CO_VARKEYWORDS if Nvarkwds > 0 else 0
+
+        ### figure out some things for assembling the bytecode.
+        code_, co_stacksize = [], 0
+        asm = code_.append
+
+        # first we push the callable that we need to call to wrap our function.
+        asm(cls.co_assemble('LOAD_DEREF', co_freevars.index('wrapper')))
+        co_stacksize += 1
+
+        ## now we need to pack all of our parameters into a tuple starting with our
+        ## `F` parameter which contains the function taht's being wrapped.
+        asm(cls.co_assemble('LOAD_DEREF', co_freevars.index('F')))
+        co_stacksize += 1
+
+        # now we can include all of the original arguments (cropped by +1 if bound).
+        for item in Fargs[int(bound):]:
+            asm(cls.co_assemble('LOAD_FAST', co_varnames.index(item)))
+            co_stacksize += 1
+
+        # then we can finally pack it into a list
+        asm(cls.co_assemble('BUILD_LIST', 1 + len(Fargs[int(bound):])))
+
+        ## now we need to pack all wildcard arguments...
+        for item in Fvarargs:
+            asm(cls.co_assemble('LOAD_FAST', co_varnames.index(item)))
+            asm(cls.co_assemble('LIST_EXTEND', 1))
+        co_stacksize = max(1 + len(Fvarargs), co_stacksize)
+
+        # ...and convert it into a tuple
+        asm(cls.co_assemble('LIST_TO_TUPLE'))
+
+        ## now we need to pack all kw arguments...
+        asm(cls.co_assemble('BUILD_MAP', 0))
+
+        for item in Fvarkwds:
+            asm(cls.co_assemble('LOAD_FAST', co_varnames.index(item)))
+            asm(cls.co_assemble('DICT_MERGE', 1))
+        co_stacksize = max(len(Fvarkwds), co_stacksize)
+
+        ## finally we have our arguments, and can now assemble our call...
+        asm(cls.co_assemble('CALL_FUNCTION_EX', 1))
+
+        # ...and then return its value.
+        asm(cls.co_assemble('RETURN_VALUE'))
+
+        ## next we'll construct the code type using our new opcodes.
+
+        # combine our opcodes into a single code string.
+        co_code = bytes().join(code_)
+
+        # consruct the new code object with all our fields.
+        cargs = pycompat.code.cons( \
+                    len(Fargs), len(co_names) + len(co_varnames) + len(co_freevars), \
+                    co_stacksize, co_flags, co_code, \
+                    co_consts, co_names, co_varnames, \
+                    Fc.co_filename, Fc.co_name, Fc.co_firstlineno, \
+                    bytes(), co_freevars, ()
+                )
+
+        func_code = pycompat.code.new(cargs)
+
+        ## finally take our code object, and put it back into a function/callable.
+        res = pycompat.function.new(func_code, pycompat.function.globals(F), pycompat.function.name(F), pycompat.function.defaults(F), cls.cell(*Svals))
+        pycompat.function.set_name(res, pycompat.function.name(F)),
+        pycompat.function.set_documentation(res, pycompat.function.documentation(F))
+
+        return res
+
     def __new__(cls, callable, wrapper):
         '''Return a function similar to `callable` that calls `wrapper` with `callable` as the first argument.'''
         cons, f = cls.constructor(callable), cls.extract(callable)
-        Fassemble = cls.assemble_2x if sys.version_info.major < 3 else cls.assemble_3x
+        Fassemble = cls.assemble_2x if sys.version_info.major < 3 else cls.assemble_38x if sys.version_info.minor < 9 else cls.assemble_39x
 
         # create a wrapper for the function that'll execute `callable` with the function as its first argument, and the rest with any args
         res = Fassemble(callable, wrapper, bound=isinstance(callable, (classmethod, types.MethodType)))
