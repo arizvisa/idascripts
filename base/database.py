@@ -5835,7 +5835,7 @@ class get(object):
             # from the database. Then we can use the data to initialize the _array
             # that we're going to return to the user.
             data = read(ea, count * cb)
-            res.fromstring(data)
+            res.fromstring(data) if sys.version_info.major < 3 else res.frombytes(data)
 
             # Validate the _array's length so that we can warn the user if it's wrong.
             if len(res) != count:
@@ -6034,11 +6034,12 @@ class get(object):
             res = cls.unsigned(ea, shift)
             length.setdefault('length', res)
 
-        # Now we can read the string..
-        res = cls.array(ea + shift, **length).tostring()
+        # Now we can read the string, and convert it to some bytes to decode
+        res = cls.array(ea + shift, **length)
+        data = res.tostring() if sys.version_info.major < 3 else res.tobytes()
 
         # ..and then process it.
-        return fterminate(fdecode(res))
+        return fterminate(fdecode(data))
     @utils.multicase()
     @classmethod
     def structure(cls):
